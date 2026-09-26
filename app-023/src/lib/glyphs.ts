@@ -46,6 +46,18 @@ export function resolveKey(
   return { instrumentId: inst.id, velocity: 2, glyph, tech: tech ? [...tech] : undefined };
 }
 
+/** 改绑：把 oldKey 改到 newKey。一个键同一时间只能对应一个字：
+ *  newKey 已被别的字占用时，把先前那条让位（与 oldKey 交换），不产生重复键。 */
+export function rebindKey(keyMap: KeyBinding[], oldKey: string, newKey: string): KeyBinding[] {
+  const target = newKey.toLowerCase();
+  if (target === oldKey) return keyMap;
+  return keyMap.map((b) => {
+    if (b.key === oldKey) return { ...b, key: target };
+    if (b.key === target) return { ...b, key: oldKey }; // 占用者让出 newKey，接手旧键
+    return b;
+  });
+}
+
 /** 拟音字反查（用于导入/校验/显示） */
 export function lookupGlyph(
   glyph: string,

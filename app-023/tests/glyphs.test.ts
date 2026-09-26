@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Instrument } from '../src/types';
 import { DEFAULT_INSTRUMENTS, PATTERNS, scoreFromPattern } from '../src/lib/factory';
-import { buildGlyphMap, lookupGlyph, resolveKey, validateHitGlyphs } from '../src/lib/glyphs';
+import { buildGlyphMap, lookupGlyph, rebindKey, resolveKey, validateHitGlyphs } from '../src/lib/glyphs';
 import { defaultSettings } from '../src/lib/factory';
 
 describe('默认数据健全性', () => {
@@ -50,6 +50,35 @@ describe('键盘映射 resolveKey', () => {
   it('a → 小锣·才', () => expect(resolveKey('a', settings, DEFAULT_INSTRUMENTS)).toMatchObject({ instrumentId: 'xiaoluo', glyph: '才' }));
   it('未绑定键 → null', () => expect(resolveKey('p', settings, DEFAULT_INSTRUMENTS)).toBeNull());
   it('大小写等价', () => expect(resolveKey('Z', settings, DEFAULT_INSTRUMENTS)).toMatchObject({ glyph: '咚' }));
+});
+
+describe('改绑 rebindKey：一键只对一字', () => {
+  const km = () => defaultSettings().keyMap;
+  const keysOf = (list: ReturnType<typeof km>) => list.map((b) => b.key);
+
+  it('改到空闲键：仅该条变更，无重复键', () => {
+    const next = rebindKey(km(), 'z', 'p');
+    expect(next.find((b) => b.instrumentId === 'gu' && b.glyphIndex === 0)!.key).toBe('p');
+    expect(keysOf(next)).toHaveLength(new Set(keysOf(next)).size);
+  });
+
+  it('改到已占用键：占用者让位（交换），仍无重复键', () => {
+    // z=鼓·咚，v=大锣·哐；把咚改到 v
+    const next = rebindKey(km(), 'z', 'v');
+    expect(next.find((b) => b.instrumentId === 'gu' && b.glyphIndex === 0)!.key).toBe('v');
+    expect(next.find((b) => b.instrumentId === 'daluo' && b.glyphIndex === 0)!.key).toBe('z');
+    expect(keysOf(next)).toHaveLength(new Set(keysOf(next)).size);
+  });
+
+  it('交换后 resolveKey 各归其主，按下不再串字', () => {
+    const next = { ...defaultSettings(), keyMap: rebindKey(km(), 'z', 'v') };
+    expect(resolveKey('v', next, DEFAULT_INSTRUMENTS)).toMatchObject({ instrumentId: 'gu', glyph: '咚' });
+    expect(resolveKey('z', next, DEFAULT_INSTRUMENTS)).toMatchObject({ instrumentId: 'daluo', glyph: '哐' });
+  });
+
+  it('新旧键相同：原样返回', () => {
+    expect(rebindKey(km(), 'z', 'z')).toBe(km());
+  });
 });
 
 describe('防串乐器校验', () => {

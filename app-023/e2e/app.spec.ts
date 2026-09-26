@@ -204,6 +204,46 @@ test.describe('设置', () => {
     const row = page.locator('tr', { hasText: '咚' });
     await expect(row).toContainText('p');
   });
+
+  test('改到已占用键：先前一条让出，不留重复键', async ({ page }) => {
+    await page.goto('#/settings');
+    // z=鼓·咚，v=大锣·哐；把咚改到 v，哐应让位到 z
+    await page.getByTestId('rebind-z').click();
+    await page.keyboard.press('v');
+    await expect(page.getByTestId('rebind-msg')).toContainText('让出');
+    const keys = await page.getByTestId('keymap-table').locator('kbd').allTextContents();
+    expect(keys.filter((k) => k === 'v')).toHaveLength(1);
+    expect(keys.filter((k) => k === 'z')).toHaveLength(1);
+    await expect(page.locator('tr', { hasText: '咚' })).toContainText('v');
+    await expect(page.locator('tr', { hasText: '哐' })).toContainText('z');
+    // 刷新后仍然如此
+    await page.waitForTimeout(300);
+    await page.reload();
+    await expect(page.locator('tr', { hasText: '咚' })).toContainText('v');
+    await expect(page.locator('tr', { hasText: '哐' })).toContainText('z');
+  });
+
+  test('Esc 取消改绑，原键位不动', async ({ page }) => {
+    await page.goto('#/settings');
+    await page.getByTestId('rebind-z').click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('rebind-msg')).toContainText('取消');
+    await expect(page.locator('tr', { hasText: '咚' })).toContainText('z');
+    await page.getByTestId('rebind-z').click();
+    await page.keyboard.press('t'); // 未按 Esc 而是按目标键：正常生效
+    await expect(page.locator('tr', { hasText: '咚' })).toContainText('t');
+  });
+
+  test('试听设置（高亮开关/伸缩）改动后刷新仍在', async ({ page }) => {
+    await page.goto('#/settings');
+    await page.getByTestId('chk-show-highlight').uncheck();
+    await page.getByTestId('rng-stretch').fill('1.3');
+    await expect(page.getByTestId('rng-stretch')).toHaveValue('1.3');
+    await page.waitForTimeout(400); // 防抖 200ms + 落盘
+    await page.reload();
+    await expect(page.getByTestId('chk-show-highlight')).not.toBeChecked();
+    await expect(page.getByTestId('rng-stretch')).toHaveValue('1.3');
+  });
 });
 
 test.describe('性能', () => {
