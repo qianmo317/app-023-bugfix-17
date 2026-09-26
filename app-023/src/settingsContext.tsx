@@ -1,4 +1,4 @@
-// 全局设置上下文：加载 IndexedDB（或默认），setShowHighlight 同步持久化
+// 全局设置上下文：加载 IndexedDB（或默认），所有改动同步持久化，刷新后仍是改过的样子
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { AppSettings } from './types';
 import { defaultSettings } from './lib/factory';
@@ -27,6 +27,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, []);
   const persist = (next: AppSettings) => {
     setS(next);
+    void saveSettings(next); // 落盘 IndexedDB，刷新不丢
   };
   return (
     <SettingsCtx.Provider

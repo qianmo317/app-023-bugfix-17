@@ -204,6 +204,44 @@ test.describe('设置', () => {
     const row = page.locator('tr', { hasText: '咚' });
     await expect(row).toContainText('p');
   });
+
+  test('改绑到已占用的键会被拦下，表内不出现重复键', async ({ page }) => {
+    await page.goto('#/settings');
+    await page.getByTestId('rebind-z').click(); // 鼓·咚 当前是 z
+    await page.keyboard.press('x'); // x 已被 鼓·八 占用
+    await expect(page.getByTestId('rebind-msg')).toContainText('占用');
+    // 原绑定不变：咚 仍是 z，八 仍是 x，全表键唯一
+    await expect(page.locator('tr', { hasText: '咚' })).toContainText('z');
+    await expect(page.locator('tr', { hasText: '八' })).toContainText('x');
+    const keys = await page.locator('[data-testid="keymap-table"] tbody kbd').allTextContents();
+    expect(new Set(keys).size).toBe(keys.length);
+    // 拦截后仍可继续改绑：换一个空键 q2 之外的 p 成功
+    await page.keyboard.press('p');
+    await expect(page.getByTestId('rebind-msg')).toContainText('已绑定 p');
+  });
+
+  test('改绑中途按 Esc 取消，键位保持原样', async ({ page }) => {
+    await page.goto('#/settings');
+    await page.getByTestId('rebind-z').click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('rebind-msg')).toContainText('已取消');
+    await expect(page.locator('tr', { hasText: '咚' })).toContainText('z');
+    // 取消后按键不再被劫持：不会把下一个键吞掉
+    const keys = await page.locator('[data-testid="keymap-table"] tbody kbd').allTextContents();
+    expect(keys).toContain('z');
+    expect(keys).not.toContain('escape');
+  });
+
+  test('高亮开关与散板伸缩改完持久化，刷新后保持', async ({ page }) => {
+    await page.goto('#/settings');
+    await page.getByTestId('chk-show-highlight').uncheck();
+    await page.getByTestId('rng-stretch').fill('1.5');
+    await expect(page.getByTestId('rng-stretch')).toHaveValue('1.5');
+    await page.waitForTimeout(300); // 等 IndexedDB 落盘
+    await page.reload();
+    await expect(page.getByTestId('chk-show-highlight')).not.toBeChecked();
+    await expect(page.getByTestId('rng-stretch')).toHaveValue('1.5');
+  });
 });
 
 test.describe('性能', () => {

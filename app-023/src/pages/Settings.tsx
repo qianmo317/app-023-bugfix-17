@@ -1,26 +1,39 @@
 // 设置 /settings —— 乐器音色参数与键盘映射
 import { useEffect, useState } from 'react';
-import type { AppSettings, Instrument } from '../types';
+import type { AppSettings, Instrument, KeyBinding } from '../types';
 import { DEFAULT_INSTRUMENTS } from '../lib/factory';
-import { saveSettings } from '../lib/storage';
 import { useSettings } from '../settingsContext';
 
 export function Settings() {
   const { s, replaceSettings, setShowHighlight, setStretch } = useSettings();
-  const [waiting, setWaiting] = useState<string | null>(null); // 等待按键的 binding key
+  const [waiting, setWaiting] = useState<KeyBinding | null>(null); // 等待按键的那条绑定
   const [instruments, setInstruments] = useState<Instrument[]>(DEFAULT_INSTRUMENTS);
   const [msg, setMsg] = useState('');
 
   const rebind = (e: KeyboardEvent) => {
     if (!waiting) return;
     e.preventDefault();
-    const key = e.key.toLowerCase();
-    const next: AppSettings = { ...s, keyMap: s.keyMap.map((b) => (b.key === waiting ? { ...b, key } : b)) };
-    replaceSettings(next);
-    saveSettings(next).then(() => {
+    if (e.key === 'Escape') {
+      // 取消本次改绑，键位保持原样
       setWaiting(null);
-      setMsg(`已绑定 ${key}`);
-    });
+      setMsg('已取消改绑');
+      return;
+    }
+    if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return; // 单按修饰键不绑定
+    const key = e.key.toLowerCase();
+    const isSelf = (b: KeyBinding) => b.instrumentId === waiting.instrumentId && b.glyphIndex === waiting.glyphIndex;
+    const conflict = s.keyMap.find((b) => b.key === key && !isSelf(b));
+    if (conflict) {
+      // 一个字母同一时间只对应一个字：拦下这次改绑并指出占用者，可换键或 Esc 取消
+      const inst = instruments.find((i) => i.id === conflict.instrumentId);
+      const glyph = inst?.glyphs[conflict.glyphIndex] ?? '—';
+      setMsg(`「${key}」已被 ${inst?.name ?? conflict.instrumentId}·${glyph} 占用，请换一个键（Esc 取消）`);
+      return;
+    }
+    const next: AppSettings = { ...s, keyMap: s.keyMap.map((b) => (isSelf(b) ? { ...b, key } : b)) };
+    replaceSettings(next); // 上下文内会写入 IndexedDB
+    setWaiting(null);
+    setMsg(`已绑定 ${key}`);
   };
 
   useEffect(() => {
@@ -74,15 +87,23 @@ export function Settings() {
           {s.keyMap.map((b) => {
             const inst = instruments.find((i) => i.id === b.instrumentId);
             const glyph = inst?.glyphs[b.glyphIndex] ?? '—';
+            const isWaiting = waiting?.instrumentId === b.instrumentId && waiting?.glyphIndex === b.glyphIndex;
             return (
-              <tr key={`${b.instrumentId}-${b.glyphIndex}`} className={waiting === b.key ? 'waiting' : ''}>
+              <tr key={`${b.instrumentId}-${b.glyphIndex}`} className={isWaiting ? 'waiting' : ''}>
                 <td>
                   <kbd>{b.key}</kbd>
                 </td>
                 <td>{inst?.name ?? b.instrumentId}</td>
                 <td>{glyph}</td>
                 <td>
-                  <button className="mini" data-testid={`rebind-${b.key}`} onClick={() => setWaiting(b.key)}>
+                  <button
+                    className="mini"
+                    data-testid={`rebind-${b.key}`}
+                    onClick={() => {
+                      setWaiting(b);
+                      setMsg('请按下新键（Esc 取消）');
+                    }}
+                  >
                     改
                   </button>
                 </td>
